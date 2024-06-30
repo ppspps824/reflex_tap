@@ -1,7 +1,9 @@
 import asyncio
+import datetime
 import random
 
 import reflex as rx
+from sqlmodel import desc, select
 
 BUTTON_NUM = 5
 GAME_DURATION = 20  # Game duration in seconds
@@ -9,7 +11,33 @@ GAME_DURATION = 20  # Game duration in seconds
 BUTTON_WIDTH = "80px"
 
 
-class ButtonState(rx.State):
+class Rank(rx.Model, table=True):
+    date: str
+    score: int
+
+    @classmethod
+    def insert(cls, score: int):
+        """Handle the form submit."""
+        today = datetime.date.today().isoformat()
+        with rx.session() as session:
+            session.add(cls(date=today, score=score))
+            session.commit()
+
+    @classmethod
+    def get_top3_today(cls):
+        today = datetime.date.today().isoformat()
+        with rx.session() as session:
+            return session.exec(
+                select(cls).where(cls.date == today).order_by(desc(cls.score)).limit(3)
+            ).all()
+
+    @classmethod
+    def get_top3(cls):
+        with rx.session() as session:
+            return session.exec(select(cls).order_by(desc(cls.score)).limit(3)).all()
+
+
+class GameState(rx.State):
     button_visibility: dict[str, bool] = {
         f"button{num}": True for num in range(BUTTON_NUM)
     }
@@ -21,6 +49,8 @@ class ButtonState(rx.State):
     score: int = 0
     time_remaining: int = GAME_DURATION
     game_active: bool = False
+    top3_today: list[Rank] = []
+    top3_all_time: list[Rank] = []
 
     def hide_button(self, button_id: str):
         if not self.game_active:
@@ -80,19 +110,23 @@ class ButtonState(rx.State):
         self.time_remaining = GAME_DURATION
         self.game_active = True
         self.generate_positions()
-        return [ButtonState.tick, rx.call_script("playBGM()")]
+        return [GameState.tick, rx.call_script("playBGM()")]
 
     @rx.background
     async def tick(self):
-        while self.game_active and self.time_remaining > 0:
+        while self.game_active:
             await asyncio.sleep(1)
             async with self:
                 self.time_remaining -= 1
-        if self.time_remaining == 0:
-            async with self:
-                self.game_active = False
-                self.bgm_playing = False
-            return rx.call_script("stopBGM()")
+            if self.time_remaining == 0:
+                async with self:
+                    self.game_active = False
+                    self.bgm_playing = False
+                    Rank.insert(score=self.score)
+                    self.top3_today = Rank.get_top3_today()
+                    self.top3_all_time = Rank.get_top3()
+                return rx.call_script("stopBGM()")
+        return None
 
 
 def button(info: tuple[str, bool]):
@@ -105,16 +139,16 @@ def button(info: tuple[str, bool]):
                 border_radius="full",
                 width=BUTTON_WIDTH,
             ),
-            on_click=ButtonState.hide_button(info[0]),
+            on_click=GameState.hide_button(info[0]),
             position="absolute",
             top=rx.cond(
-                ButtonState.button_positions.contains(info[0]),
-                ButtonState.button_positions[info[0]]["top"],
+                GameState.button_positions.contains(info[0]),
+                GameState.button_positions[info[0]]["top"],
                 "0vh",
             ),
             left=rx.cond(
-                ButtonState.button_positions.contains(info[0]),
-                ButtonState.button_positions[info[0]]["left"],
+                GameState.button_positions.contains(info[0]),
+                GameState.button_positions[info[0]]["left"],
                 "0vw",
             ),
             variant="ghost",
@@ -125,7 +159,7 @@ def button(info: tuple[str, bool]):
 
 def special_button():
     return rx.cond(
-        ButtonState.special_button_visible,
+        GameState.special_button_visible,
         rx.button(
             rx.chakra.image(
                 src="/special.webp",
@@ -133,10 +167,10 @@ def special_button():
                 border_radius="full",
                 width=BUTTON_WIDTH,
             ),
-            on_click=ButtonState.hide_special_button,
+            on_click=GameState.hide_special_button,
             position="absolute",
-            top=ButtonState.special_button_position["top"],
-            left=ButtonState.special_button_position["left"],
+            top=GameState.special_button_position["top"],
+            left=GameState.special_button_position["left"],
             variant="ghost",
         ),
         rx.text(""),
@@ -145,7 +179,7 @@ def special_button():
 
 def penalty_button():
     return rx.cond(
-        ButtonState.penalty_button_visible,
+        GameState.penalty_button_visible,
         rx.button(
             rx.chakra.image(
                 src="/penalty.webp",
@@ -153,10 +187,10 @@ def penalty_button():
                 border_radius="full",
                 width=BUTTON_WIDTH,
             ),
-            on_click=ButtonState.hide_penalty_button,
+            on_click=GameState.hide_penalty_button,
             position="absolute",
-            top=ButtonState.penalty_button_position["top"],
-            left=ButtonState.penalty_button_position["left"],
+            top=GameState.penalty_button_position["top"],
+            left=GameState.penalty_button_position["left"],
             variant="ghost",
         ),
         rx.text(""),
@@ -167,7 +201,7 @@ def penalty_button():
 def index():
     return rx.box(
         rx.cond(
-            ~ButtonState.game_active & ButtonState.time_remaining,
+            ~GameState.game_active & GameState.time_remaining,
             rx.box(
                 rx.chakra.image(
                     src="/top.webp",
@@ -184,7 +218,7 @@ def index():
                         border_radius="50px",
                         border="5px solid black",
                     ),
-                    on_click=ButtonState.start_game,
+                    on_click=GameState.start_game,
                     variant="ghost",
                     position="absolute",
                     bottom="7vh",  # 下からの位置を指定
@@ -196,10 +230,10 @@ def index():
                 height="100vh",  # 画面の高さいっぱいに設定
             ),
             rx.cond(
-                ButtonState.game_active,
+                GameState.game_active,
                 rx.flex(
-                    rx.heading(f"Score: {ButtonState.score}", font_size="2em"),
-                    rx.heading(f"Time: {ButtonState.time_remaining}", font_size="2em"),
+                    rx.heading(f"Score: {GameState.score}", font_size="2em"),
+                    rx.heading(f"Time: {GameState.time_remaining}", font_size="2em"),
                     justify="between",
                     padding="20px",
                     color="white",
@@ -234,40 +268,67 @@ def index():
             }
         """),
         rx.cond(
-            ButtonState.game_active,
+            GameState.game_active,
             rx.box(
                 rx.foreach(
-                    ButtonState.button_visibility,
+                    GameState.button_visibility,
                     button,
                 ),
                 special_button(),
                 penalty_button(),
-                overflow="hidden",
+                bg="lightblue",
+                width="100vw",
+                height="100vh",
             ),
             rx.cond(
-                ButtonState.time_remaining == 0,
+                GameState.time_remaining == 0,
                 rx.center(
                     rx.vstack(
                         rx.chakra.image(
                             src="game_over.webp",
-                            width="50%",
+                            width="30%",
                             border_radius="full",
                         ),
                         rx.heading(
-                            f"Final Score: {ButtonState.score}", font_size="2em"
+                            f"Final Score: {GameState.score}",
+                            font_size="2em",
+                            bg="black",
+                            color="white",
+                        ),
+                        rx.hstack(
+                            rx.vstack(
+                                rx.heading("きょうのTop3"),
+                                rx.foreach(
+                                    GameState.top3_today,
+                                    lambda rank: rx.text(f"Score: {rank.score}"),
+                                ),
+                                spacing="1",
+                            ),
+                            rx.vstack(
+                                rx.heading("いままでのTop3"),
+                                rx.foreach(
+                                    GameState.top3_all_time,
+                                    lambda rank: rx.text(
+                                        f"{rank.date}, Score: {rank.score}"
+                                    ),
+                                ),
+                                spacing="1",
+                            ),
+                            spacing="3",
                         ),
                         rx.button(
                             rx.chakra.image(
                                 src="retry.png", width="30%", border_radius="60px"
                             ),
                             variant="ghost",
-                            on_click=ButtonState.start_game,
+                            on_click=GameState.start_game,
                         ),
                         align="center",
                         spacing="5",
                     ),
                     height="100vh",
                     justify="center",
+                    bg="lightyellow",
                 ),
             ),
         ),

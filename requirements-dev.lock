@@ -122,6 +122,8 @@ pluggy==1.5.0
 pre-commit==3.7.1
 psutil==5.9.8
     # via reflex
+psycopg2==2.9.9
+    # via reflex-tap
 pydantic==1.10.17
     # via fastapi
     # via reflex
@@ -136,6 +138,8 @@ pyproject-hooks==1.1.0
 pytest==8.2.2
 python-dateutil==2.9.0.post0
     # via reflex-hosting-cli
+python-dotenv==1.0.1
+    # via reflex-tap
 python-engineio==4.9.1
     # via python-socketio
     # via reflex
