@@ -3,6 +3,16 @@ import random
 
 import reflex as rx
 
+
+meta = [
+    {"name": "twitter:card", "content": "summary"},
+    {"property": "og:description", "content": "Tapして遊ぶ簡単ゲーム。目指せ高得点！"},
+    {"property": "og:title", "content": "Tap!Tap!Tap!"},
+    {"property": "og:image", "content": "https://ul.h3z.jp/V4SJUWtE.png"},
+    {"property": "og:type", "content": "website"},
+    {"property": "og:url", "content": "https://reflex-tap.reflex.run/"},
+]
+
 BUTTON_NUM = 5
 GAME_DURATION = 20  # Game duration in seconds
 
@@ -22,7 +32,12 @@ class GameState(rx.State):
     time_remaining: int = GAME_DURATION
     game_active: bool = False
 
-    def hide_button(self, button_id: str):
+    def hide_button(self, button_id: str) -> None:
+        """指定されたボタンを消し、スコアを更新します。
+
+        Args:
+            button_id (str): 消すボタンのID。
+        """
         if not self.game_active:
             return None
         self.button_visibility[button_id] = False
@@ -32,7 +47,8 @@ class GameState(rx.State):
 
         return rx.call_script("playFromStart('button_sfx')")
 
-    def hide_special_button(self):
+    def hide_special_button(self) -> None:
+        """高得点ボタンを消し、スコアを更新します。"""
         if not self.game_active:
             return None
         self.special_button_visible = False
@@ -40,14 +56,16 @@ class GameState(rx.State):
 
         return rx.call_script("playFromStart('button_sfx2')")
 
-    def hide_penalty_button(self):
+    def hide_penalty_button(self) -> None:
+        """ペナルティボタンを消し、スコアを減少させます。"""
         if not self.game_active:
             return None
         self.penalty_button_visible = False
         self.score = max(0, self.score - 5)
         return rx.call_script("playFromStart('penalty_sfx')")
 
-    def generate_positions(self):
+    def generate_positions(self) -> None:
+        """ボタンの新しい位置を生成します。"""
         new_positions = {}
         for button_id in self.button_visibility.keys():
             new_positions[button_id] = {
@@ -75,7 +93,12 @@ class GameState(rx.State):
         else:
             self.penalty_button_visible = False
 
-    def start_game(self):
+    def start_game(self) -> list:
+        """ゲームを開始し、初期スコアと時間を設定します。
+
+        Returns:
+            list: ゲームの進行を管理するための関数リスト。
+        """
         self.score = 0
         self.time_remaining = GAME_DURATION
         self.game_active = True
@@ -83,7 +106,8 @@ class GameState(rx.State):
         return [GameState.tick, rx.call_script("playBGM()")]
 
     @rx.background
-    async def tick(self):
+    async def tick(self) -> None:
+        """ゲームの残り時間をカウントダウンします。"""
         while self.game_active:
             await asyncio.sleep(1)
             async with self:
@@ -96,7 +120,15 @@ class GameState(rx.State):
         return None
 
 
-def button(info: tuple[str, bool]):
+def button(info: tuple[str, bool]) -> rx.cond:
+    """ボタンを生成します。
+
+    Args:
+        info (tuple[str, bool]): ボタンの情報（IDと可視性）。
+
+    Returns:
+        rx.cond: ボタンの表示制御。
+    """
     return rx.cond(
         info[1],
         rx.button(
@@ -124,7 +156,12 @@ def button(info: tuple[str, bool]):
     )
 
 
-def special_button():
+def special_button() -> rx.cond:
+    """高得点ボタンを生成します。
+
+    Returns:
+        rx.cond: ボタンの表示制御。
+    """
     return rx.cond(
         GameState.special_button_visible,
         rx.button(
@@ -144,7 +181,12 @@ def special_button():
     )
 
 
-def penalty_button():
+def penalty_button() -> rx.cond:
+    """ペナルティボタンを生成します。
+
+    Returns:
+        rx.cond: ペナルティボタンの表示制御。
+    """
     return rx.cond(
         GameState.penalty_button_visible,
         rx.button(
@@ -164,8 +206,13 @@ def penalty_button():
     )
 
 
-@rx.page(route="/", title="Tap!Tap!Tap!")
-def index():
+@rx.page(route="/", title="Tap!Tap!Tap!", meta=meta)
+def index() -> rx.box:
+    """ゲームのインデックスページを生成します。
+
+    Returns:
+        rx.box: ゲームのUIを構成するボックス。
+    """
     return rx.box(
         rx.cond(
             ~GameState.game_active & GameState.time_remaining,
@@ -188,7 +235,7 @@ def index():
                     on_click=GameState.start_game,
                     variant="ghost",
                     position="absolute",
-                    bottom="7vh",  # 下からの位置を指定
+                    bottom="15vh",  # 下からの位置を指定
                     left="50%",  # 左右中央に配置
                     transform="translateX(-50%)",  # 中央揃えの調整
                 ),
