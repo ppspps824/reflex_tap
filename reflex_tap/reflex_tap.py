@@ -11,32 +11,6 @@ GAME_DURATION = 20  # Game duration in seconds
 BUTTON_WIDTH = "80px"
 
 
-class Rank(rx.Model, table=True):
-    date: str
-    score: int
-
-    @classmethod
-    def insert(cls, score: int):
-        """Handle the form submit."""
-        today = datetime.date.today().isoformat()
-        with rx.session() as session:
-            session.add(cls(date=today, score=score))
-            session.commit()
-
-    @classmethod
-    def get_top3_today(cls):
-        today = datetime.date.today().isoformat()
-        with rx.session() as session:
-            return session.exec(
-                select(cls).where(cls.date == today).order_by(desc(cls.score)).limit(3)
-            ).all()
-
-    @classmethod
-    def get_top3(cls):
-        with rx.session() as session:
-            return session.exec(select(cls).order_by(desc(cls.score)).limit(3)).all()
-
-
 class GameState(rx.State):
     button_visibility: dict[str, bool] = {
         f"button{num}": True for num in range(BUTTON_NUM)
@@ -49,8 +23,6 @@ class GameState(rx.State):
     score: int = 0
     time_remaining: int = GAME_DURATION
     game_active: bool = False
-    top3_today: list[Rank] = []
-    top3_all_time: list[Rank] = []
 
     def hide_button(self, button_id: str):
         if not self.game_active:
@@ -122,9 +94,6 @@ class GameState(rx.State):
                 async with self:
                     self.game_active = False
                     self.bgm_playing = False
-                    Rank.insert(score=self.score)
-                    self.top3_today = Rank.get_top3_today()
-                    self.top3_all_time = Rank.get_top3()
                 return rx.call_script("stopBGM()")
         return None
 
@@ -241,7 +210,8 @@ def index():
                 ),
             ),
         ),
-        rx.script("""
+        rx.script(
+            """
             var button_sfx = new Audio("/button_se.mp3")
             var button_sfx2 = new Audio("/button_se2.mp3")
             var penalty_sfx = new Audio("/penalty_se.mp3")
@@ -266,7 +236,8 @@ def index():
                 bgm.pause();
                 bgm.currentTime = 0;
             }
-        """),
+        """
+        ),
         rx.cond(
             GameState.game_active,
             rx.box(
@@ -294,27 +265,6 @@ def index():
                             font_size="2em",
                             bg="black",
                             color="white",
-                        ),
-                        rx.hstack(
-                            rx.vstack(
-                                rx.heading("きょうのTop3"),
-                                rx.foreach(
-                                    GameState.top3_today,
-                                    lambda rank: rx.text(f"Score: {rank.score}"),
-                                ),
-                                spacing="1",
-                            ),
-                            rx.vstack(
-                                rx.heading("いままでのTop3"),
-                                rx.foreach(
-                                    GameState.top3_all_time,
-                                    lambda rank: rx.text(
-                                        f"{rank.date}, Score: {rank.score}"
-                                    ),
-                                ),
-                                spacing="1",
-                            ),
-                            spacing="3",
                         ),
                         rx.button(
                             rx.chakra.image(
