@@ -115,7 +115,6 @@ class GameState(rx.State):
             if self.time_remaining == 0:
                 async with self:
                     self.game_active = False
-                    self.bgm_playing = False
                 return rx.call_script("stopBGM()")
         return None
 
@@ -346,5 +345,14 @@ app = rx.App(
         ),
         rx.script(src="scripts/loading_service_worker.js"),
         rx.script(src="scripts/freeze_window.js"),
+        rx.script(src="https://www.googletagmanager.com/gtag/js?id=G-00QMJE3CPY"),
+        rx.script(
+            """
+            window.dataLayer = window.dataLayer || [];  
+            function gtag(){window.dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'G-00QMJE3CPY');
+            """
+        ),
     ],
 )
