@@ -1,9 +1,7 @@
 import asyncio
-import datetime
 import random
 
 import reflex as rx
-from sqlmodel import desc, select
 
 BUTTON_NUM = 5
 GAME_DURATION = 20  # Game duration in seconds
